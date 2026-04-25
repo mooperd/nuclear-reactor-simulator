@@ -1,0 +1,13 @@
+{
+  "name": "nuclear-reactor-simulator",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Local tooling for debugging nuclide-chart in Chrome",
+  "type": "module",
+  "scripts": {
+    "capture:debug": "node scripts/capture-debug.mjs"
+  },
+  "dependencies": {
+    "puppeteer": "^24.7.2"
+  }
+}

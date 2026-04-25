@@ -16,12 +16,14 @@ In this project, MCP is used to connect your assistant to **Chrome DevTools**, w
 
 ## What is configured in this repo?
 
-- `.vscode/mcp.json` registers a local MCP server named `chrome-devtools`
+- `.vscode/mcp.json` registers two local MCP servers:
+  - `chrome-devtools` (launches isolated headless Chrome)
+  - `chrome-devtools-attached` (connects to `http://127.0.0.1:9222`)
 - `.vscode/tasks.json` defines a background task named `serve-nuclide-chart`
 
-The MCP server is launched with:
+Default MCP server launch:
 
-- `npx -y chrome-devtools-mcp@latest --isolated=true`
+- `npx -y chrome-devtools-mcp@latest --headless=true --isolated=true`
 
 `--isolated=true` means Chrome uses a temporary profile for MCP sessions.
 
@@ -71,6 +73,8 @@ Open the MCP server list in VS Code and start `chrome-devtools`.
 
 If prompted, confirm trust for the server configuration.
 
+If the default server cannot launch Chrome in your environment, start `chrome-devtools-attached` instead and connect to a Chrome instance running with remote debugging on port `9222`.
+
 ### 3) Use MCP-powered prompts in chat
 
 Example prompts:
@@ -80,12 +84,54 @@ Example prompts:
 - "Record a performance trace for this page and report bottlenecks."
 - "List failed network requests and likely causes."
 
+## Capture console errors and page HTML (copy/paste prompts)
+
+Use these prompts in Copilot Chat after the MCP server is running:
+
+1. Open page:
+
+  - "Open http://127.0.0.1:8000/nuclide-chart.html"
+
+2. Capture browser errors:
+
+  - "List all console messages for the current page and highlight errors and warnings only."
+
+3. Capture full rendered HTML:
+
+  - "Return `document.documentElement.outerHTML` from the current page."
+
+4. Save both into files in this repo:
+
+  - "Create `debug/console-errors.txt` with the error/warning output and `debug/page.html` with the current page HTML."
+
+If output is too large, ask:
+
+- "Split the HTML output into chunks and save to `debug/page.html` without truncation."
+
+## One-command capture without MCP
+
+You can capture browser console issues + final rendered HTML with one command:
+
+- `npm run capture:debug`
+
+Optional arguments:
+
+- `npm run capture:debug -- --url=http://127.0.0.1:8000/nuclide-chart.html`
+- `npm run capture:debug -- --out=./debug`
+- `npm run capture:debug -- --timeout=60000`
+
+Output files:
+
+- `debug/page.html`
+- `debug/console-errors.json`
+- `debug/console-errors.txt`
+
 ## Typical workflow
 
 1. Start `serve-nuclide-chart`
-2. Ask assistant to open and inspect `nuclide-chart.html`
+2. Run `npm run capture:debug`
 3. Fix issues in code
-4. Re-run analysis (console/network/performance)
+4. Re-run capture and compare outputs
 
 ## Security notes
 
@@ -107,6 +153,16 @@ Example prompts:
 - Ensure Chrome is installed and can launch normally.
 - Restart the MCP server from VS Code.
 - Retry with a simple prompt first (open page, take screenshot).
+
+If this still fails, use attached mode:
+
+1. Fully quit Chrome.
+2. Start Chrome with remote debugging:
+
+  - `/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-profile-stable`
+
+3. In VS Code MCP servers, start `chrome-devtools-attached`.
+4. Retry the same prompts.
 
 ### Local page not reachable
 

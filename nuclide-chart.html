@@ -659,7 +659,7 @@ function render(rawData, periodicTableData) {
   })).filter(d => !isNaN(d.z) && !isNaN(d.n));
 
   data.forEach(d => {
-    const el = elementBySymbol.get(d.symbol) || null;
+    const el = elementByZ.get(d.z) || null;
     d.element_lookup_ok = Boolean(el);
     d.element_z_matches = Boolean(el) && el.number === d.z;
     if (!el) return;
@@ -685,7 +685,9 @@ function render(rawData, periodicTableData) {
 
   // ── Graph model (D3-style): { nodes, links } ─────────────────────────────
   // Nodes are nuclides, links are decay transitions (up to 3 modes per nuclide)
-  const nodes = data;
+  // Only proton-number-backed chemical-element rows (Z >= 1) are shown.
+  // This suppresses free-particle rows (e.g., Z=0 neutron entries) from chart cells/labels.
+  const nodes = data.filter(d => d.z >= 1);
   const nodeByKey = new Map(nodes.map(n => [n.key, n]));
   const links = [];
 
@@ -865,16 +867,23 @@ function render(rawData, periodicTableData) {
       .attr('stroke', d => d.decay1 === 'stable' ? '#fff' : 'rgba(0,0,0,0.45)')
       .attr('stroke-width', d => d.decay1 === 'stable' ? 0.7 : 0.3);
 
-  // Strict element row labels (one per Z). No fallback values are allowed.
+  // Strict element row labels (one per chemical element row).
+  // Rows without periodic-table metadata (e.g., Z=0 neutron rows) are
+  // intentionally skipped and receive no element label.
   const zValues = Array.from(new Set(nodes.map(n => n.z))).sort((a, b) => a - b);
-  const elementRows = zValues.map(z => {
+  const elementRows = zValues.flatMap(z => {
     const rowNodes = nodes.filter(n => n.z === z);
     if (rowNodes.length === 0) {
       throw new ElementRowLabelError('Failed to build element row labels: empty row encountered.', { z });
     }
 
+    const elementRowNodes = rowNodes.filter(n => n.element_lookup_ok && n.element_z_matches);
+    if (elementRowNodes.length === 0) {
+      return [];
+    }
+
     const names = new Set(
-      rowNodes
+      elementRowNodes
         .map(n => n.element_name)
         .filter(v => typeof v === 'string' && v.trim().length > 0)
         .map(v => v.trim())
@@ -882,12 +891,12 @@ function render(rawData, periodicTableData) {
 
     if (names.size !== 1) {
       throw new ElementRowLabelError(
-        'Failed to build element row labels: expected exactly one non-empty element name per Z row.',
-        { z, uniqueNameCount: names.size }
+        'Failed to build element row labels: expected exactly one non-empty element name per element-backed Z row.',
+        { z, uniqueNameCount: names.size, rowNodeCount: rowNodes.length, elementNodeCount: elementRowNodes.length }
       );
     }
 
-    return { z, name: Array.from(names)[0] };
+    return [{ z, name: Array.from(names)[0] }];
   });
 
   zoomG.selectAll('.element-row-label')
