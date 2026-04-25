@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Table of Nuclides — IAEA Livechart</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d0d0d;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Top bar ─────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 18px;
+      background: #161616;
+      border-bottom: 1px solid #2a2a2a;
+      flex-shrink: 0;
+      gap: 12px;
+      flex-wrap: wrap;
+      z-index: 5;
+    }
+
+    header h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: #f0f0f0;
+      white-space: nowrap;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      color: #aaa;
+    }
+
+    select, input[type=range] {
+      background: #222;
+      border: 1px solid #3a3a3a;
+      color: #e0e0e0;
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: 0.78rem;
+      cursor: pointer;
+    }
+
+    select:focus { outline: 1px solid #555; }
+
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.72rem;
+      color: #bbb;
+      user-select: none;
+    }
+
+    .legend-swatch {
+      width: 13px;
+      height: 13px;
+      border-radius: 2px;
+      flex-shrink: 0;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+
+    /* ── Main workspace (below header) ───────────────────────────────── */
+    #workspace {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Left info panel (1/3) ───────────────────────────────────────── */
+    #info-panel {
+      width: 33.333%;
+      flex-shrink: 0;
+      background: #111;
+      border-right: 1px solid #222;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #info-panel .panel-header {
+      padding: 14px 18px 10px;
+      border-bottom: 1px solid #1e1e1e;
+      flex-shrink: 0;
+    }
+
+    #info-panel .panel-header .nuclide-name {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.01em;
+      line-height: 1.1;
+    }
+
+    #info-panel .panel-header .nuclide-sub {
+      font-size: 0.78rem;
+      color: #555;
+      margin-top: 3px;
+    }
+
+    #info-panel .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    #info-panel .panel-body::-webkit-scrollbar { width: 4px; }
+    #info-panel .panel-body::-webkit-scrollbar-track { background: transparent; }
+    #info-panel .panel-body::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+
+    .info-section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .info-section-title {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #444;
+      border-bottom: 1px solid #1e1e1e;
+      padding-bottom: 4px;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      font-size: 0.8rem;
+    }
+
+    .info-row .lbl { color: #555; white-space: nowrap; }
+    .info-row .val { color: #d0d0d0; text-align: right; font-variant-numeric: tabular-nums; }
+
+    .decay-badge {
+      display: inline-block;
+      border-radius: 4px;
+      padding: 3px 10px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    /* Decay chain strip */
+    #chain-strip {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .chain-step {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+    }
+
+    .chain-step .step-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .chain-step .step-nuclide {
+      font-weight: 600;
+      min-width: 54px;
+    }
+
+    .chain-step .step-arrow {
+      color: #333;
+      font-size: 0.7rem;
+    }
+
+    .chain-step .step-mode {
+      font-size: 0.7rem;
+      color: #666;
+    }
+
+    .chain-step .step-hl {
+      margin-left: auto;
+      font-size: 0.68rem;
+      color: #444;
+      text-align: right;
+    }
+
+    /* Empty state */
+    #panel-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: #2a2a2a;
+      font-size: 0.82rem;
+      text-align: center;
+      padding: 20px;
+    }
+
+    #panel-empty .empty-icon { font-size: 2.5rem; }
+
+    /* ── Right chart area (2/3) ───────────────────────────────────────── */
+    #chart-area {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .cell {
+      stroke: rgba(0,0,0,0.5);
+      stroke-width: 0.4;
+      cursor: crosshair;
+      transition: opacity 0.1s;
+    }
+
+    .cell:hover { stroke: #fff; stroke-width: 1.2; }
+
+    .cell-label,
+    .hover-cell-label {
+      pointer-events: none;
+      user-select: none;
+      text-anchor: middle;
+      font-size: 11px;
+      fill: #f7f7f7;
+      paint-order: stroke;
+      stroke: rgba(0,0,0,0.8);
+      stroke-width: 2px;
+      stroke-linejoin: round;
+      font-weight: 500;
+    }
+
+    .hover-cell-label {
+      font-size: 12px;
+      font-weight: 700;
+      fill: #ffffff;
+      stroke: rgba(0,0,0,0.95);
+      stroke-width: 2.6px;
+    }
+
+    .axis text { fill: #888; font-size: 10px; }
+    .axis line, .axis path { stroke: #333; }
+    .grid line { stroke: #1e1e1e; stroke-dasharray: 2,3; }
+
+    .magic-line {
+      stroke: rgba(255,255,255,0.18);
+      stroke-width: 0.8;
+      stroke-dasharray: 4,3;
+    }
+
+    /* Loading overlay */
+    #loading {
+      position: absolute;
+      inset: 0;
+      background: #0d0d0d;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      z-index: 20;
+    }
+
+    #loading p { color: #888; font-size: 0.85rem; }
+    #loading .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid #222;
+      border-top-color: #4d90fe;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #status-bar {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(20,20,20,0.85);
+      border: 1px solid #2a2a2a;
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.72rem;
+      color: #666;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    #error-msg {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 10px;
+      color: #f66;
+      font-size: 0.9rem;
+      z-index: 20;
+      text-align: center;
+      padding: 20px;
+    }
+
+    #error-msg code {
+      background: #1a1a1a;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      color: #aaa;
+      max-width: 500px;
+      word-break: break-all;
+    }
+
+    .reset-btn {
+      background: #222;
+      border: 1px solid #3a3a3a;
+      color: #ccc;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      cursor: pointer;
+    }
+    .reset-btn:hover { background: #2c2c2c; color: #fff; }
+
+    .stable-line { stroke: #ffffff22; stroke-width: 0.6; }
+
+    .chain-overlay,
+    .chain-overlay * {
+      pointer-events: none;
+    }
+
+    .element-row-label {
+      pointer-events: none;
+      user-select: none;
+      text-anchor: end;
+      fill: #9a9a9a;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⚛ Table of Nuclides</h1>
+  <div class="controls">
+    <div class="control-group">
+      <label>Color by</label>
+      <select id="color-mode">
+        <option value="decay">Decay mode</option>
+        <option value="halflife">Half-life</option>
+        <option value="abundance">Abundance</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <button class="reset-btn" id="reset-zoom">Reset Zoom</button>
+    </div>
+    <div id="legend" class="legend"></div>
+  </div>
+</header>
+
+<div id="workspace">
+
+  <!-- ── Left info panel ─────────────────────────────────────────────── -->
+  <div id="info-panel">
+    <div id="panel-empty">
+      <div class="empty-icon">⚛</div>
+      <div>Hover a nuclide<br>to see its properties<br>and decay chain</div>
+    </div>
+    <div id="panel-content" style="display:none;flex-direction:column;height:100%">
+      <div class="panel-header">
+        <div class="nuclide-name" id="p-name"></div>
+        <div class="nuclide-sub" id="p-sub"></div>
+      </div>
+      <div class="panel-body">
+        <div class="info-section">
+          <div class="info-section-title">Nuclear properties</div>
+          <div class="info-row"><span class="lbl">Spin / Parity</span><span class="val" id="p-jp"></span></div>
+          <div class="info-row"><span class="lbl">Half-life</span><span class="val" id="p-hl"></span></div>
+          <div class="info-row"><span class="lbl">Natural abundance</span><span class="val" id="p-ab"></span></div>
+          <div class="info-row"><span class="lbl">Atomic mass</span><span class="val" id="p-am"></span></div>
+          <div class="info-row"><span class="lbl">Binding energy/A</span><span class="val" id="p-be"></span></div>
+        </div>
+        <div class="info-section">
+          <div class="info-section-title">Decay</div>
+          <div class="info-row" style="margin-bottom:4px">
+            <span id="p-decay-badge" class="decay-badge"></span>
+            <span class="val" id="p-branch"></span>
+          </div>
+          <div class="info-row"><span class="lbl">Q_α</span><span class="val" id="p-qa"></span></div>
+          <div class="info-row"><span class="lbl">Q_β⁻</span><span class="val" id="p-qbm"></span></div>
+          <div class="info-row"><span class="lbl">Q_EC</span><span class="val" id="p-qec"></span></div>
+        </div>
+        <div class="info-section">
+          <div class="info-section-title">Decay chain</div>
+          <div id="chain-strip"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Right chart area ────────────────────────────────────────────── -->
+  <div id="chart-area">
+    <div id="loading">
+      <div class="spinner"></div>
+      <p id="loading-text">Loading ground state data…</p>
+    </div>
+    <div id="error-msg">
+      <div>⚠ Could not load <code>ground_states.csv</code></div>
+      <p style="color:#888;font-size:0.8rem">Make sure you serve this folder via a local HTTP server and that <code>ground_states.csv</code> exists next to this file.</p>
+      <code>python3 fetch_nuclides.py &amp;&amp; python3 -m http.server 8080</code>
+    </div>
+    <svg id="chart"></svg>
+    <div id="status-bar">Scroll to zoom · Drag to pan · Hover a cell for details</div>
+  </div>
+
+</div>
+
+<script>
+// ─── Colour schemes ───────────────────────────────────────────────────────────
+
+const DECAY_COLORS = {
+  'stable':  '#1a1a1a',   // near-black (special border below)
+  'A':  '#f5c542',        // alpha – yellow/gold
+  'B-': '#4d90fe',        // beta-minus – blue
+  'B+': '#e8604c',        // beta-plus/EC – red-orange
+  'EC': '#e8604c',
+  'SF': '#3dbf7f',        // spontaneous fission – green
+  'IT': '#b07cff',        // isomeric transition – purple
+  'P':  '#ff88cc',        // proton – pink
+  'N':  '#ff9940',        // neutron – orange
+  '?':  '#555555',        // unknown
+};
+
+const DECAY_LABELS = {
+  'stable': 'Stable',
+  'A':  'Alpha (α)',
+  'B-': 'Beta⁻ (β⁻)',
+  'B+': 'Beta⁺ / EC',
+  'EC': 'Beta⁺ / EC',
+  'SF': 'Spon. Fission',
+  'IT': 'Isomeric (IT)',
+  'P':  'Proton',
+  'N':  'Neutron',
+  '?':  'Unknown',
+};
+
+// Decay vectors: [ΔZ, ΔN] applied to reach the daughter nuclide
+const DECAY_VECTORS = {
+  'B-':    [+1, -1],   // neutron → proton
+  'B+':    [-1, +1],   // proton  → neutron (β+ / EC)
+  'EC':    [-1, +1],
+  'A':     [-2, -2],   // emit ⁴He
+  'P':     [-1,  0],   // emit proton
+  'N':     [ 0, -1],   // emit neutron
+  'SF':    null,       // splits – no single vector
+  'IT':    null,       // same nuclide, drops to GS
+  'stable': null,
+  '?':     null,
+};
+
+// Colours used to paint each step in the decay chain (cycles if chain > 6)
+const CHAIN_STEP_COLORS = ['#ffffff','#ffe566','#ffb347','#ff6b6b','#a78bfa','#34d399'];
+
+// Magic numbers for protons and neutrons
+const MAGIC = [2, 8, 20, 28, 50, 82, 126];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function parseDecay(d) {
+  if (!d || d.trim() === '') return '?';
+  const s = d.trim().toUpperCase();
+  if (s === 'STABLE' || s === 'S') return 'stable';
+  if (s.startsWith('A'))  return 'A';
+  if (s === 'SF')          return 'SF';
+  if (s === 'IT')          return 'IT';
+  if (s.startsWith('B+') || s.startsWith('EC')) return 'B+';
+  if (s.startsWith('B-') || s.startsWith('BM')) return 'B-';
+  if (s === 'P')           return 'P';
+  if (s === 'N')           return 'N';
+  return '?';
+}
+
+function halfLifeColor(row) {
+  const hl = parseFloat(row.half_life_sec);
+  if (isNaN(hl)) return '#444';
+  // log scale from 1e-12 s to 1e25 s
+  const t = Math.max(0, Math.min(1, (Math.log10(hl) + 12) / 37));
+  return d3.interpolatePlasma(t);
+}
+
+function abundanceColor(row) {
+  const a = parseFloat(row.abundance);
+  if (isNaN(a) || a <= 0) return '#222';
+  const t = Math.max(0, Math.min(1, Math.log10(a + 1) / 2));
+  return d3.interpolateYlOrRd(t);
+}
+
+function formatHL(row) {
+  const sec = parseFloat(row.half_life_sec);
+  const hl  = row.half_life ? row.half_life.trim() : '';
+  const u   = row.unit_hl   ? row.unit_hl.trim()   : '';
+  if (!hl || hl === ' ') return isNaN(sec) ? '—' : `${sec.toExponential(2)} s`;
+  return `${hl} ${u}`;
+}
+
+class ElementRowLabelError extends Error {
+  constructor(message, details = {}) {
+    super(message);
+    this.name = 'ElementRowLabelError';
+    this.details = details;
+  }
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+// ─── Data loading ─────────────────────────────────────────────────────────────
+// Data is loaded from a local CSV pre-fetched by fetch_nuclides.py,
+// avoiding browser CORS restrictions on the IAEA server.
+const DATA_URL = 'ground_states.csv';
+const ELEMENTS_URL = 'PeriodicTableJSON.json';
+
+async function fetchDataSources() {
+  const [csvResp, elementsResp] = await Promise.all([
+    fetch(DATA_URL),
+    fetch(ELEMENTS_URL),
+  ]);
+
+  if (!csvResp.ok) throw new Error(`HTTP ${csvResp.status} loading ${DATA_URL}`);
+  if (!elementsResp.ok) throw new Error(`HTTP ${elementsResp.status} loading ${ELEMENTS_URL}`);
+
+  return {
+    csvText: await csvResp.text(),
+    periodicTable: await elementsResp.json(),
+  };
+}
+
+(async () => {
+  try {
+    const { csvText, periodicTable } = await fetchDataSources();
+    document.getElementById('loading').style.display = 'none';
+    render(d3.csvParse(csvText), periodicTable);
+  } catch (err) {
+    console.error(err);
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error-msg').style.display = 'flex';
+  }
+})();
+
+function render(rawData, periodicTableData) {
+  const renderStartMs = performance.now();
+
+  const normalizeSymbol = (s) => {
+    if (!s) return '';
+    const t = String(s).trim();
+    if (!t) return '';
+    return t[0].toUpperCase() + t.slice(1).toLowerCase();
+  };
+
+  // ── Element lookup tables (from PeriodicTableJSON.json) ───────────────────
+  const periodicElements = Array.isArray(periodicTableData?.elements)
+    ? periodicTableData.elements
+    : [];
+
+  const elementBySymbol = new Map();
+  const elementByZ = new Map();
+
+  periodicElements.forEach(el => {
+    const sym = normalizeSymbol(el.symbol);
+    if (!sym) return;
+
+    const meta = {
+      symbol: sym,
+      name: el.name || '',
+      number: Number.isFinite(+el.number) ? +el.number : null,
+      category: el.category || '',
+      phase: el.phase || '',
+      group: Number.isFinite(+el.group) ? +el.group : null,
+      period: Number.isFinite(+el.period) ? +el.period : null,
+      atomic_mass: Number.isFinite(+el.atomic_mass) ? +el.atomic_mass : null,
+      block: el.block || '',
+    };
+
+    elementBySymbol.set(sym, meta);
+    if (meta.number !== null) elementByZ.set(meta.number, meta);
+  });
+
+  // ── Parse ──────────────────────────────────────────────────────────────────
+  const data = rawData.map(d => ({
+    z:          +d.z,
+    n:          +d.n,
+    symbol:     normalizeSymbol(d.symbol) || '?',
+    jp:         d.jp     ? d.jp.trim()     : '',
+    half_life:  d.half_life,
+    half_life_sec: d.half_life_sec,
+    unit_hl:    d.unit_hl,
+    abundance:  d.abundance,
+    decay1:     parseDecay(d.decay_1),
+    decay1_pct: d['decay_1_%'] || '',
+    decay2:     parseDecay(d.decay_2),
+    decay3:     parseDecay(d.decay_3),
+    atomic_mass: d.atomic_mass,
+    binding:    d.binding,
+    qbm:        d.qbm,
+    qa:         d.qa,
+    qec:        d.qec,
+    // Enriched element metadata via symbol lookup
+    element_name: '',
+    element_category: '',
+    element_phase: '',
+    element_group: null,
+    element_period: null,
+    element_atomic_mass: null,
+    element_block: '',
+    element_lookup_ok: false,
+    element_z_matches: false,
+  })).filter(d => !isNaN(d.z) && !isNaN(d.n));
+
+  data.forEach(d => {
+    const el = elementBySymbol.get(d.symbol) || null;
+    d.element_lookup_ok = Boolean(el);
+    d.element_z_matches = Boolean(el) && el.number === d.z;
+    if (!el) return;
+
+    d.element_name = el.name;
+    d.element_category = el.category;
+    d.element_phase = el.phase;
+    d.element_group = el.group;
+    d.element_period = el.period;
+    d.element_atomic_mass = el.atomic_mass;
+    d.element_block = el.block;
+  });
+
+  const elementLookupMissing = data.filter(d => !d.element_lookup_ok).length;
+  const elementLookupMismatch = data.filter(d => d.element_lookup_ok && !d.element_z_matches).length;
+  const parseDoneMs = performance.now();
+
+  // Assign stable numeric ids and keys
+  data.forEach((d, id) => {
+    d.id = id;
+    d.key = `${d.z},${d.n}`;
+  });
+
+  // ── Graph model (D3-style): { nodes, links } ─────────────────────────────
+  // Nodes are nuclides, links are decay transitions (up to 3 modes per nuclide)
+  const nodes = data;
+  const nodeByKey = new Map(nodes.map(n => [n.key, n]));
+  const links = [];
+
+  nodes.forEach(n => {
+    [
+      { field: 'decay1', rank: 1, branching: n.decay1_pct || '' },
+      { field: 'decay2', rank: 2, branching: '' },
+      { field: 'decay3', rank: 3, branching: '' },
+    ].forEach(({ field, rank, branching }) => {
+      const mode = n[field];
+      const vec = DECAY_VECTORS[mode];
+      if (!vec) return;
+      const daughterKey = `${n.z + vec[0]},${n.n + vec[1]}`;
+      const daughter = nodeByKey.get(daughterKey);
+      if (!daughter) return;
+      links.push({
+        source: n.id,
+        target: daughter.id,
+        mode,
+        rank,
+        branching,
+      });
+    });
+  });
+  const graphDoneMs = performance.now();
+
+  const decayGraph = { nodes, links };
+
+  // Fast adjacency for traversal
+  const outEdgesById = new Map(decayGraph.nodes.map(n => [n.id, []]));
+  decayGraph.links.forEach(e => outEdgesById.get(e.source).push(e));
+
+  // Primary transition pointer (rank 1), -1 means no daughter transition
+  const primaryNext = new Int32Array(decayGraph.nodes.length).fill(-1);
+  outEdgesById.forEach((edges, id) => {
+    const primary = edges.find(e => e.rank === 1);
+    if (primary) primaryNext[id] = primary.target;
+  });
+
+  // Cache: start node id -> chain ids (primary-path)
+  const chainCacheIds = new Map();
+
+  const maxN = d3.max(nodes, d => d.n);
+  const maxZ = d3.max(nodes, d => d.z);
+
+  // ── Layout ─────────────────────────────────────────────────────────────────
+  const svg    = d3.select('#chart');
+  const margin = { top: 30, right: 30, bottom: 50, left: 170 };
+
+  let W = svg.node().clientWidth  || window.innerWidth;
+  let H = svg.node().clientHeight || (window.innerHeight - 60);
+
+  const innerW = W - margin.left - margin.right;
+  const innerH = H - margin.top  - margin.bottom;
+
+  const xScale = d3.scaleLinear().domain([0, maxN + 1]).range([0, innerW]);
+  const yScale = d3.scaleLinear().domain([maxZ + 1, 0]).range([0, innerH]);
+  const stepX = xScale(1) - xScale(0);
+  const stepY = yScale(0) - yScale(1);
+
+  const root = svg.append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+  // ── Arrowhead marker ───────────────────────────────────────────────────────
+  const defs = svg.append('defs');
+  defs.append('marker')
+    .attr('id', 'chain-arrow')
+    .attr('viewBox', '0 -4 8 8')
+    .attr('refX', 7).attr('refY', 0)
+    .attr('markerWidth', 5).attr('markerHeight', 5)
+    .attr('orient', 'auto')
+    .append('path')
+      .attr('d', 'M0,-4L8,0L0,4')
+      .attr('fill', '#fff').attr('opacity', 0.85);
+
+  // ── Zoom ───────────────────────────────────────────────────────────────────
+  const zoom = d3.zoom()
+    .scaleExtent([0.3, 40])
+    .on('zoom', ({ transform }) => {
+      zoomG.attr('transform', transform);
+      // Rescale axes
+      xAxisG.call(xAxis.scale(transform.rescaleX(xScale)));
+      yAxisG.call(yAxis.scale(transform.rescaleY(yScale)));
+    });
+
+  svg.call(zoom);
+
+  document.getElementById('reset-zoom').addEventListener('click', () => {
+    svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+  });
+
+  const zoomG = root.append('g');
+
+  // ── Axes ───────────────────────────────────────────────────────────────────
+  const xAxis = d3.axisBottom(xScale)
+    .ticks(20).tickSizeOuter(0)
+    .tickFormat(d => Number.isInteger(d) ? d : '');
+
+  const yAxis = d3.axisLeft(yScale)
+    .ticks(20).tickSizeOuter(0)
+    .tickFormat(d => Number.isInteger(d) ? d : '');
+
+  const xAxisG = root.append('g')
+    .attr('class', 'axis')
+    .attr('transform', `translate(0,${innerH})`)
+    .call(xAxis);
+
+  const yAxisG = root.append('g')
+    .attr('class', 'axis')
+    .call(yAxis);
+
+  root.append('text')
+    .attr('x', innerW / 2).attr('y', innerH + 42)
+    .attr('text-anchor', 'middle')
+    .attr('fill', '#666').attr('font-size', 11)
+    .text('N  (neutron number)');
+
+  root.append('text')
+    .attr('transform', 'rotate(-90)')
+    .attr('x', -innerH / 2).attr('y', -42)
+    .attr('text-anchor', 'middle')
+    .attr('fill', '#666').attr('font-size', 11)
+    .text('Z  (proton number)');
+
+  // ── Magic-number lines ─────────────────────────────────────────────────────
+  MAGIC.forEach(m => {
+    // Vertical (neutron magic)
+    zoomG.append('line')
+      .attr('class', 'magic-line')
+      .attr('x1', xScale(m + 0.5)).attr('x2', xScale(m + 0.5))
+      .attr('y1', 0).attr('y2', innerH);
+    // Horizontal (proton magic)
+    zoomG.append('line')
+      .attr('class', 'magic-line')
+      .attr('x1', 0).attr('x2', innerW)
+      .attr('y1', yScale(m)).attr('y2', yScale(m));
+  });
+
+  // ── Stable valley line (Z ≈ N / (1 + 0.0075·A^(2/3))) ────────────────────
+  // Just draw approximate stable band diagonal for reference
+  const stablePts = d3.range(0, maxN + 1, 1).map(n => {
+    // Empirical valley of stability: Z = n / (1 + 0.0075*(2n)^(2/3))
+    const Z = n / (1 + 0.0075 * Math.pow(2 * n, 2/3));
+    return [n, Z];
+  });
+
+  zoomG.append('path')
+    .datum(stablePts)
+    .attr('class', 'stable-line')
+    .attr('fill', 'none')
+    .attr('d', d3.line()
+      .x(d => xScale(d[0]))
+      .y(d => yScale(d[1]))
+    );
+
+  // ── Cells ──────────────────────────────────────────────────────────────────
+  let colorMode = 'decay';
+
+  function getColor(d) {
+    if (colorMode === 'halflife')  return halfLifeColor(d);
+    if (colorMode === 'abundance') return abundanceColor(d);
+    // decay mode
+    const key = d.decay1 === 'stable' ? 'stable' : d.decay1;
+    return DECAY_COLORS[key] || DECAY_COLORS['?'];
+  }
+
+  const cells = zoomG.selectAll('.cell')
+    .data(nodes)
+    .enter().append('rect')
+      .attr('class', 'cell')
+      .attr('x', d => xScale(d.n))
+      .attr('y', d => yScale(d.z + 1))
+      .attr('width',  stepX)
+      .attr('height', stepY)
+      .attr('rx', 1)
+      .attr('fill', d => getColor(d))
+      .attr('stroke', d => d.decay1 === 'stable' ? '#fff' : 'rgba(0,0,0,0.45)')
+      .attr('stroke-width', d => d.decay1 === 'stable' ? 0.7 : 0.3);
+
+  // Strict element row labels (one per Z). No fallback values are allowed.
+  const zValues = Array.from(new Set(nodes.map(n => n.z))).sort((a, b) => a - b);
+  const elementRows = zValues.map(z => {
+    const rowNodes = nodes.filter(n => n.z === z);
+    if (rowNodes.length === 0) {
+      throw new ElementRowLabelError('Failed to build element row labels: empty row encountered.', { z });
+    }
+
+    const names = new Set(
+      rowNodes
+        .map(n => n.element_name)
+        .filter(v => typeof v === 'string' && v.trim().length > 0)
+        .map(v => v.trim())
+    );
+
+    if (names.size !== 1) {
+      throw new ElementRowLabelError(
+        'Failed to build element row labels: expected exactly one non-empty element name per Z row.',
+        { z, uniqueNameCount: names.size }
+      );
+    }
+
+    return { z, name: Array.from(names)[0] };
+  });
+
+  zoomG.selectAll('.element-row-label')
+    .data(elementRows)
+    .enter().append('text')
+      .attr('class', 'element-row-label')
+      .attr('x', -8)
+      .attr('y', d => yScale(d.z + 1) + stepY / 2 + 3)
+      .text(d => d.name);
+
+  // Hover label is always shown for the active cell even when zoomed out
+  const hoverCellLabel = zoomG.append('text')
+    .attr('class', 'hover-cell-label')
+    .style('display', 'none');
+
+  // Overlay group for chain arrows – sits above cells, inside zoomG so it
+  // transforms with pan/zoom automatically.
+  const chainG = zoomG.append('g').attr('class', 'chain-overlay');
+
+  // ── Decay chain logic ──────────────────────────────────────────────────────
+
+  function buildDecayChainIds(startId) {
+    const cached = chainCacheIds.get(startId);
+    if (cached) return cached;
+
+    const visited = new Set();
+    const path = [];
+    let curId = startId;
+
+    while (curId !== -1 && path.length < 80) {
+      if (visited.has(curId)) break; // cycle guard
+
+      // Tail cache reuse
+      const tail = chainCacheIds.get(curId);
+      if (tail && path.length > 0) {
+        path.push(...tail);
+        break;
+      }
+
+      visited.add(curId);
+      path.push(curId);
+
+      const nextId = primaryNext[curId];
+      if (nextId === -1) break;
+      curId = nextId;
+    }
+
+    // Cache all suffixes for future O(1)-ish retrieval
+    for (let i = 0; i < path.length; i++) {
+      const nodeId = path[i];
+      if (!chainCacheIds.has(nodeId)) {
+        chainCacheIds.set(nodeId, path.slice(i));
+      }
+    }
+
+    return chainCacheIds.get(startId) || path;
+  }
+
+  function buildDecayChain(startNode) {
+    return buildDecayChainIds(startNode.id).map(id => decayGraph.nodes[id]);
+  }
+
+  // Eager precompute: all primary decay chains are cached once at load,
+  // so hover interactions only do cache lookups + rendering work.
+  const precomputeStartMs = performance.now();
+  let longestChain = 0;
+  let longestChainNodeId = -1;
+  for (const node of decayGraph.nodes) {
+    const ids = buildDecayChainIds(node.id);
+    if (ids.length > longestChain) {
+      longestChain = ids.length;
+      longestChainNodeId = node.id;
+    }
+  }
+  const precomputeDoneMs = performance.now();
+
+  // Hover perf stats
+  const hoverPerf = {
+    count: 0,
+    chainMsTotal: 0,
+    highlightMsTotal: 0,
+    panelMsTotal: 0,
+    totalMsTotal: 0,
+    maxTotalMs: 0,
+    recent: [],
+  };
+
+  function logHoverPerf(sample, nuclide) {
+    hoverPerf.count += 1;
+    hoverPerf.chainMsTotal += sample.chainMs;
+    hoverPerf.highlightMsTotal += sample.highlightMs;
+    hoverPerf.panelMsTotal += sample.panelMs;
+    hoverPerf.totalMsTotal += sample.totalMs;
+    hoverPerf.maxTotalMs = Math.max(hoverPerf.maxTotalMs, sample.totalMs);
+    hoverPerf.recent.push(sample.totalMs);
+    if (hoverPerf.recent.length > 60) hoverPerf.recent.shift();
+
+    const shouldLog = hoverPerf.count % 20 === 0 || sample.totalMs > 16;
+    if (!shouldLog) return;
+
+    const avg = v => (v / hoverPerf.count).toFixed(2);
+    const sortedRecent = [...hoverPerf.recent].sort((a, b) => a - b);
+    const p95 = sortedRecent[Math.max(0, Math.floor(sortedRecent.length * 0.95) - 1)] || 0;
+
+    console.groupCollapsed(
+      `[nuclide/perf] hover #${hoverPerf.count} ${nuclide} total=${sample.totalMs.toFixed(2)}ms`
+    );
+    console.table({
+      last_chain_ms: sample.chainMs.toFixed(2),
+      last_highlight_ms: sample.highlightMs.toFixed(2),
+      last_panel_ms: sample.panelMs.toFixed(2),
+      last_total_ms: sample.totalMs.toFixed(2),
+      avg_chain_ms: avg(hoverPerf.chainMsTotal),
+      avg_highlight_ms: avg(hoverPerf.highlightMsTotal),
+      avg_panel_ms: avg(hoverPerf.panelMsTotal),
+      avg_total_ms: avg(hoverPerf.totalMsTotal),
+      p95_total_ms_recent60: p95.toFixed(2),
+      max_total_ms: hoverPerf.maxTotalMs.toFixed(2),
+    });
+    console.groupEnd();
+  }
+
+  // Detailed per-display chain logging (every display event)
+  let chainDisplaySeq = 0;
+  let lastChainShowAtMs = 0;
+  let clearTimer = null;
+
+  function logChainDisplay(eventType, node, chain, sample = null, extra = {}) {
+    const seq = ++chainDisplaySeq;
+    const now = performance.now();
+    const sincePrev = lastChainShowAtMs ? (now - lastChainShowAtMs) : 0;
+    if (eventType === 'show') lastChainShowAtMs = now;
+
+    const chainSummary = chain.map((c, i) => {
+      const next = i < chain.length - 1 ? chain[i + 1] : null;
+      const edge = next ? outEdgesById.get(c.id).find(e => e.target === next.id && e.rank === 1) : null;
+      return {
+        idx: i,
+        id: c.id,
+        nuclide: `${c.z + c.n}${c.symbol}`,
+        key: c.key,
+        decay_mode: c.decay1,
+        edge_mode: edge ? edge.mode : '',
+        edge_rank: edge ? edge.rank : '',
+        to: next ? `${next.z + next.n}${next.symbol}` : '(end)',
+        half_life: formatHL(c),
+      };
+    });
+
+    const head = `[nuclide/chain] ${eventType} #${seq} ${node ? `${node.z + node.n}${node.symbol}` : '(none)'} len=${chain.length}`;
+    console.groupCollapsed(head);
+    console.table({
+      seq,
+      event: eventType,
+      hovered: node ? `${node.z + node.n}${node.symbol}` : 'n/a',
+      hovered_key: node ? node.key : 'n/a',
+      chain_length: chain.length,
+      since_previous_show_ms: sincePrev.toFixed(2),
+      timestamp_ms: now.toFixed(2),
+      total_hover_ms: sample ? sample.totalMs.toFixed(2) : 'n/a',
+      chain_ms: sample ? sample.chainMs.toFixed(2) : 'n/a',
+      highlight_ms: sample ? sample.highlightMs.toFixed(2) : 'n/a',
+      panel_ms: sample ? sample.panelMs.toFixed(2) : 'n/a',
+      reason: extra.reason || '',
+      pending_clear_timer: clearTimer ? 'yes' : 'no',
+    });
+    console.table(chainSummary);
+    if (eventType === 'clear' && sincePrev > 0 && sincePrev < 120) {
+      console.warn(`[nuclide/chain] rapid clear after ${sincePrev.toFixed(2)}ms (possible flicker trigger)`);
+    }
+    console.groupEnd();
+  }
+
+  // Cell center in zoomG coordinate space
+  function cx(d) { return xScale(d.n) + stepX / 2; }
+  function cy(d) { return yScale(d.z + 1) + stepY / 2; }
+
+  let activeChainIds = new Set();
+
+  function resetChainCellStyles(idSet) {
+    if (!idSet || idSet.size === 0) return;
+    cells
+      .filter(d => idSet.has(d.id))
+      .attr('opacity', 1)
+      .attr('stroke', d =>
+        colorMode === 'decay' && d.decay1 === 'stable' ? '#fff' : 'rgba(0,0,0,0.45)')
+      .attr('stroke-width', d =>
+        colorMode === 'decay' && d.decay1 === 'stable' ? 0.7 : 0.3);
+  }
+
+  function highlightChain(chain) {
+    const previousChainIds = activeChainIds;
+    activeChainIds = new Set(chain.map(d => d.id));
+    const chainIndexById = new Map(chain.map((d, i) => [d.id, i]));
+
+    // Reset only the previously highlighted chain cells.
+    resetChainCellStyles(previousChainIds);
+
+    // Bright outline on chain cells, coloured by step
+    cells
+      .filter(d => activeChainIds.has(d.id))
+      .attr('opacity', 1)
+      .attr('stroke', d => {
+        const idx = chainIndexById.get(d.id) ?? 0;
+        return CHAIN_STEP_COLORS[Math.min(idx, CHAIN_STEP_COLORS.length - 1)];
+      })
+      .attr('stroke-width', 1.6);
+
+    // Draw arrows between consecutive chain cells
+    chainG.selectAll('*').remove();
+    for (let i = 0; i < chain.length - 1; i++) {
+      const src = chain[i], dst = chain[i + 1];
+      const col = CHAIN_STEP_COLORS[Math.min(i, CHAIN_STEP_COLORS.length - 1)];
+
+      // Shorten line so arrowhead clears cell edge
+      const x1 = cx(src), y1 = cy(src);
+      const x2 = cx(dst), y2 = cy(dst);
+      const dx = x2 - x1, dy = y2 - y1;
+      const len = Math.sqrt(dx*dx + dy*dy) || 1;
+      const pad = Math.min(stepX, stepY) * 0.42;
+      const ex = x2 - (dx / len) * pad;
+      const ey = y2 - (dy / len) * pad;
+
+      chainG.append('line')
+        .attr('x1', x1).attr('y1', y1)
+        .attr('x2', ex).attr('y2', ey)
+        .attr('stroke', col)
+        .attr('stroke-width', 1.5)
+        .attr('stroke-opacity', 0.9)
+        .attr('marker-end', 'url(#chain-arrow)');
+    }
+  }
+
+  function clearChain() {
+    const previousChainIds = activeChainIds;
+    activeChainIds = new Set();
+    chainG.selectAll('*').remove();
+    hoverCellLabel.style('display', 'none');
+    resetChainCellStyles(previousChainIds);
+  }
+
+  // ── Panel helpers ──────────────────────────────────────────────────────────
+  const panelEmpty   = document.getElementById('panel-empty');
+  const panelContent = document.getElementById('panel-content');
+
+  function setText(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  }
+  function setHTML(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = val;
+  }
+
+  function updatePanel(d, chain) {
+    const A = d.z + d.n;
+    const decayKey = d.decay1 === 'stable' ? 'stable' : d.decay1;
+    const color = DECAY_COLORS[decayKey] || '#555';
+    const label = DECAY_LABELS[decayKey] || 'Unknown';
+
+    // Header
+    setText('p-name', `${A}${d.symbol}`);
+    const elName = d.element_name ? ` · ${d.element_name}` : '';
+    setText('p-sub', `Z = ${d.z}   N = ${d.n}   A = ${A}${elName}`);
+
+    // Nuclear properties
+    setText('p-jp',  d.jp  || '—');
+    setText('p-hl',  formatHL(d));
+
+    const abund = parseFloat(d.abundance);
+    setText('p-ab', isNaN(abund) || abund === 0 ? '—'
+      : abund < 0.01 ? abund.toExponential(3) + ' %'
+      : abund.toFixed(4) + ' %');
+
+    const am = parseFloat(d.atomic_mass);
+    setText('p-am', isNaN(am) ? '—' : am.toFixed(3) + ' μAMU');
+
+    const be = parseFloat(d.binding);
+    setText('p-be', isNaN(be) ? '—' : be.toFixed(3) + ' keV');
+
+    // Decay
+    const badge = document.getElementById('p-decay-badge');
+    badge.textContent = label;
+    badge.style.cssText = `background:${color}22;color:${color};border:1px solid ${color}44`;
+
+    setText('p-branch', d.decay1_pct ? `${d.decay1_pct}% branching` : '');
+
+    const qa  = parseFloat(d.qa);
+    const qbm = parseFloat(d.qbm);
+    const qec = parseFloat(d.qec);
+    setText('p-qa',  isNaN(qa)  ? '—' : qa.toFixed(1)  + ' keV');
+    setText('p-qbm', isNaN(qbm) ? '—' : qbm.toFixed(1) + ' keV');
+    setText('p-qec', isNaN(qec) ? '—' : qec.toFixed(1) + ' keV');
+
+    // Decay chain strip
+    const strip = document.getElementById('chain-strip');
+    strip.innerHTML = '';
+    chain.forEach((c, i) => {
+      const col = CHAIN_STEP_COLORS[Math.min(i, CHAIN_STEP_COLORS.length - 1)];
+      const cA  = c.z + c.n;
+      const isLast = i === chain.length - 1;
+      const dKey = c.decay1 === 'stable' ? 'stable' : c.decay1;
+
+      const row = document.createElement('div');
+      row.className = 'chain-step';
+      row.innerHTML = `
+        <span class="step-dot" style="background:${col}"></span>
+        <span class="step-nuclide" style="color:${col}">${cA}${c.symbol}</span>
+        <span class="step-mode">${DECAY_LABELS[dKey] || dKey}</span>
+        <span class="step-hl">${formatHL(c)}</span>`;
+      strip.appendChild(row);
+
+      if (!isLast) {
+        const arr = document.createElement('div');
+        arr.className = 'chain-step';
+        arr.innerHTML = `<span style="color:#2a2a2a;padding-left:4px">↓</span>`;
+        strip.appendChild(arr);
+      } else if (c.decay1 === 'stable') {
+        const fin = document.createElement('div');
+        fin.className = 'chain-step';
+        fin.innerHTML = `<span style="color:#3dbf7f;padding-left:4px;font-size:0.75rem">✓ Stable end-point</span>`;
+        strip.appendChild(fin);
+      } else {
+        const fin = document.createElement('div');
+        fin.className = 'chain-step';
+        fin.innerHTML = `<span style="color:#555;padding-left:4px;font-size:0.75rem">… chain continues</span>`;
+        strip.appendChild(fin);
+      }
+    });
+
+    panelEmpty.style.display   = 'none';
+    panelContent.style.display = 'flex';
+  }
+
+  function clearPanel() {
+    panelContent.style.display = 'none';
+    panelEmpty.style.display   = 'flex';
+  }
+
+  // ── Cell interaction ───────────────────────────────────────────────────────
+  let lastHoveredKey = null;
+
+  cells
+    .on('mouseenter', function(event, d) {
+      if (clearTimer) {
+        clearTimeout(clearTimer);
+        clearTimer = null;
+      }
+
+      const hoverStartMs = performance.now();
+      const key = `${d.z},${d.n}`;
+      if (key === lastHoveredKey) return;
+      lastHoveredKey = key;
+
+      hoverCellLabel
+        .attr('x', xScale(d.n) + stepX / 2)
+        .attr('y', yScale(d.z + 1) + stepY * 0.62)
+        .text(`${d.z + d.n}${d.symbol}`)
+        .style('display', null);
+
+      const tChain0 = performance.now();
+      const chain = buildDecayChain(d);
+      const tChain1 = performance.now();
+
+      const tHighlight0 = performance.now();
+      highlightChain(chain);
+      const tHighlight1 = performance.now();
+
+      const tPanel0 = performance.now();
+      updatePanel(d, chain);
+      const tPanel1 = performance.now();
+
+      const sample = {
+        chainMs: tChain1 - tChain0,
+        highlightMs: tHighlight1 - tHighlight0,
+        panelMs: tPanel1 - tPanel0,
+        totalMs: tPanel1 - hoverStartMs,
+      };
+      logHoverPerf(sample, `${d.z + d.n}${d.symbol}`);
+      logChainDisplay('show', d, chain, sample, { reason: 'mouseenter' });
+    });
+
+  // Clear only when exiting the whole chart viewport.
+  const chartAreaEl = document.getElementById('chart-area');
+  chartAreaEl.addEventListener('mouseleave', () => {
+    if (clearTimer) clearTimeout(clearTimer);
+    clearTimer = setTimeout(() => {
+      lastHoveredKey = null;
+      clearChain();
+      clearPanel();
+      logChainDisplay('clear', null, [], null, { reason: 'chart-area mouseleave' });
+      clearTimer = null;
+    }, 60);
+  });
+
+  // ── Color mode switch ──────────────────────────────────────────────────────
+  function updateColors() {
+    cells
+      .attr('fill', d => getColor(d))
+      .attr('stroke', d =>
+        colorMode === 'decay' && d.decay1 === 'stable' ? '#fff' : 'rgba(0,0,0,0.45)')
+      .attr('stroke-width', d =>
+        colorMode === 'decay' && d.decay1 === 'stable' ? 0.7 : 0.3);
+    buildLegend();
+  }
+
+  document.getElementById('color-mode').addEventListener('change', e => {
+    colorMode = e.target.value;
+    updateColors();
+  });
+
+  // ── Legend ─────────────────────────────────────────────────────────────────
+  function buildLegend() {
+    const el = document.getElementById('legend');
+    el.innerHTML = '';
+
+    if (colorMode === 'decay') {
+      const seen = new Set(nodes.map(d => d.decay1 === 'stable' ? 'stable' : d.decay1));
+      const order = ['stable','B-','B+','A','SF','IT','P','N','?'];
+      order.forEach(k => {
+        if (!seen.has(k)) return;
+        const item = document.createElement('div');
+        item.className = 'legend-item';
+        const border = k === 'stable' ? 'border:1px solid #fff;' : '';
+        item.innerHTML = `<div class="legend-swatch" style="background:${DECAY_COLORS[k] || '#555'};${border}"></div><span>${DECAY_LABELS[k] || k}</span>`;
+        el.appendChild(item);
+      });
+    } else if (colorMode === 'halflife') {
+      const labels = ['< 1 ps', '1 ns', '1 μs', '1 ms', '1 s', '1 h', '1 y', '10⁹ y', '> 10¹³ y'];
+      const stops = [0, 0.10, 0.22, 0.35, 0.46, 0.58, 0.68, 0.83, 1.0];
+      const bar = document.createElement('div');
+      bar.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:0.72rem;color:#aaa';
+      const grad = stops.map((t,i) => `${d3.interpolatePlasma(t)} ${Math.round(t*100)}%`).join(', ');
+      bar.innerHTML = `<span>Short</span>
+        <div style="width:120px;height:11px;border-radius:3px;background:linear-gradient(90deg,${grad})"></div>
+        <span>Long</span>`;
+      el.appendChild(bar);
+    } else if (colorMode === 'abundance') {
+      const bar = document.createElement('div');
+      bar.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:0.72rem;color:#aaa';
+      const stops2 = [0,0.25,0.5,0.75,1].map(t =>
+        `${d3.interpolateYlOrRd(t)} ${Math.round(t*100)}%`).join(', ');
+      bar.innerHTML = `<span>Low</span>
+        <div style="width:120px;height:11px;border-radius:3px;background:linear-gradient(90deg,${stops2})"></div>
+        <span>High</span>`;
+      el.appendChild(bar);
+    }
+  }
+
+  buildLegend();
+
+  const statusBar = document.getElementById('status-bar');
+  if (statusBar) {
+    statusBar.textContent = `Graph ready: ${decayGraph.nodes.length} nodes · ${decayGraph.links.length} links · hover to inspect decay paths`;
+  }
+
+  const renderDoneMs = performance.now();
+  const longestNode = longestChainNodeId >= 0 ? decayGraph.nodes[longestChainNodeId] : null;
+  console.groupCollapsed('[nuclide/perf] initialization');
+  console.table({
+    rows_loaded: rawData.length,
+    nodes: decayGraph.nodes.length,
+    links: decayGraph.links.length,
+    element_lookup_entries: elementBySymbol.size,
+    element_lookup_missing: elementLookupMissing,
+    element_lookup_mismatch: elementLookupMismatch,
+    parse_ms: (parseDoneMs - renderStartMs).toFixed(2),
+    graph_build_ms: (graphDoneMs - parseDoneMs).toFixed(2),
+    precompute_chain_ms: (precomputeDoneMs - precomputeStartMs).toFixed(2),
+    total_render_ms: (renderDoneMs - renderStartMs).toFixed(2),
+    longest_chain_len: longestChain,
+    longest_chain_start: longestNode ? `${longestNode.z + longestNode.n}${longestNode.symbol}` : 'n/a',
+  });
+  console.info('[nuclide/perf] Hover logs print every 20 hovers or when a hover exceeds 16ms.');
+  console.groupEnd();
+}
+</script>
+</body>
+</html>
