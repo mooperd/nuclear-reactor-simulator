@@ -40,6 +40,23 @@ Run the VS Code task:
 
 - `serve-nuclide-chart`
 
+How to run it in VS Code:
+
+1. Open the Command Palette (`⇧⌘P` on macOS).
+2. Run **Tasks: Run Task**.
+3. Select **serve-nuclide-chart**.
+4. Leave the task running while testing in browser/MCP.
+
+Alternative:
+
+- Menu: **Terminal → Run Task... → serve-nuclide-chart**
+
+To stop the server task:
+
+1. Open Command Palette (`⇧⌘P`).
+2. Run **Tasks: Terminate Task**.
+3. Choose **serve-nuclide-chart**.
+
 It serves the project at:
 
 - `http://127.0.0.1:8000/`
