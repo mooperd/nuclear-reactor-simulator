@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Table of Nuclides — IAEA Livechart</title>
   <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script defer src="https://cloud.umami.is/script.js" data-website-id="e14d6d15-9580-4e38-b297-df359d4ffbfd"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -257,6 +258,17 @@
     }
 
     svg {
+      /* ── Chart text CSS custom properties ──────────────────────────
+         All in-chart text sizes are derived from cell geometry at
+         runtime (see JS).  The --chart-label-scale multiplier is
+         driven by the "Label size" slider in the header controls. */
+      --chart-font-cell:    3.5px;
+      --chart-font-hover:   4px;
+      --chart-font-element: 4px;
+      --chart-font-magic:   2.8px;
+      --chart-stroke-label: 0.8px;
+      --chart-stroke-hover: 1px;
+      --chart-label-scale:  1;
       width: 100%;
       height: 100%;
       display: block;
@@ -276,21 +288,21 @@
       pointer-events: none;
       user-select: none;
       text-anchor: middle;
-      font-size: 11px;
+      font-size: var(--chart-font-cell);
       fill: #f7f7f7;
       paint-order: stroke;
       stroke: rgba(0,0,0,0.8);
-      stroke-width: 2px;
+      stroke-width: var(--chart-stroke-label);
       stroke-linejoin: round;
       font-weight: 500;
     }
 
     .hover-cell-label {
-      font-size: 12px;
+      font-size: var(--chart-font-hover);
       font-weight: 700;
       fill: #ffffff;
       stroke: rgba(0,0,0,0.95);
-      stroke-width: 2.6px;
+      stroke-width: var(--chart-stroke-hover);
     }
 
     .axis text { fill: #888; font-size: 10px; }
@@ -304,7 +316,7 @@
     }
     .magic-label {
       fill: rgba(255,215,0,0.45);
-      font-size: 9px;
+      font-size: var(--chart-font-magic);
       font-family: 'Segoe UI', system-ui, sans-serif;
     }
 
@@ -403,7 +415,7 @@
     .element-row-label {
       text-anchor: end;
       fill: #b8b8b8;
-      font-size: 4px;
+      font-size: var(--chart-font-element);
       font-weight: 200;
       letter-spacing: 0.01em;
     }
@@ -431,6 +443,9 @@
       </label>
       <label style="display:flex;align-items:center;gap:4px;font-size:0.75rem;color:#aaa;cursor:pointer;user-select:none">
         <input type="checkbox" id="magic-toggle" checked style="accent-color:#666;cursor:pointer"> Magic #
+      </label>
+      <label style="display:flex;align-items:center;gap:4px;font-size:0.75rem;color:#aaa;cursor:pointer;user-select:none">
+        Labels <input type="range" id="label-size" min="0.3" max="2.5" step="0.1" value="1" style="width:60px;cursor:pointer"> <span id="label-size-val">1.0×</span>
       </label>
     </div>
     <div id="legend" class="legend"></div>
@@ -806,6 +821,31 @@ function render(rawData, periodicTableData) {
   const yScale = d3.scaleLinear().domain([maxZ + 1, 0]).range([0, innerH]);
   const stepX = xScale(1) - xScale(0);
   const stepY = yScale(0) - yScale(1);
+
+  // ── Compute chart text sizes from cell geometry ─────────────────────
+  const cellUnit = Math.min(stepX, stepY);
+  let labelScale = 1;
+
+  function updateChartFontVars() {
+    const s = cellUnit * labelScale;
+    const svgEl = svg.node();
+    svgEl.style.setProperty('--chart-font-cell',    (s * 0.65) + 'px');
+    svgEl.style.setProperty('--chart-font-hover',   (s * 0.78) + 'px');
+    svgEl.style.setProperty('--chart-font-element', (s * 0.72) + 'px');
+    svgEl.style.setProperty('--chart-font-magic',   (s * 0.52) + 'px');
+    svgEl.style.setProperty('--chart-stroke-label',  (s * 0.15) + 'px');
+    svgEl.style.setProperty('--chart-stroke-hover',  (s * 0.20) + 'px');
+  }
+  updateChartFontVars();
+
+  // Label size slider
+  const labelSizeSlider = document.getElementById('label-size');
+  const labelSizeVal    = document.getElementById('label-size-val');
+  labelSizeSlider.addEventListener('input', e => {
+    labelScale = parseFloat(e.target.value);
+    labelSizeVal.textContent = labelScale.toFixed(1) + '×';
+    updateChartFontVars();
+  });
 
   const root = svg.append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`);
