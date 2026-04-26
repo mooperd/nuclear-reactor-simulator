@@ -401,10 +401,12 @@
         <option value="decay">Decay mode</option>
         <option value="halflife">Half-life</option>
         <option value="abundance">Abundance</option>
+        <option value="chains">Decay chains</option>
       </select>
     </div>
     <div class="control-group">
       <button class="reset-btn" id="reset-zoom">Reset Zoom</button>
+      <button class="reset-btn" id="download-png">Download PNG</button>
     </div>
     <div id="legend" class="legend"></div>
   </div>
@@ -872,6 +874,7 @@ function render(rawData, periodicTableData) {
   let colorMode = 'decay';
 
   function getColor(d) {
+    if (colorMode === 'chains')    return '#1a1a1a';
     if (colorMode === 'halflife')  return halfLifeColor(d);
     if (colorMode === 'abundance') return abundanceColor(d);
     // decay mode
@@ -954,6 +957,12 @@ function render(rawData, periodicTableData) {
       .attr('dominant-baseline', 'middle')
       .text(d => d.name);
 
+  // ── Static decay-chain lines (for 'chains' color mode) ─────────────────
+  // Built once; toggled visible/hidden by updateColors().
+  const staticChainG = zoomG.append('g')
+    .attr('class', 'chain-overlay static-chains')
+    .style('display', 'none');
+
   // Hover label is always shown for the active cell even when zoomed out
   const hoverCellLabel = zoomG.append('text')
     .attr('class', 'hover-cell-label')
@@ -1019,6 +1028,24 @@ function render(rawData, periodicTableData) {
     }
   }
   const precomputeDoneMs = performance.now();
+
+  // Populate static chain lines from primaryNext (one line per primary decay edge)
+  for (let id = 0; id < primaryNext.length; id++) {
+    const targetId = primaryNext[id];
+    if (targetId === -1) continue;
+    const src = decayGraph.nodes[id];
+    const dst = decayGraph.nodes[targetId];
+    const decayKey = src.decay1 === 'stable' ? 'stable' : src.decay1;
+    const col = DECAY_COLORS[decayKey] || DECAY_COLORS['?'];
+    staticChainG.append('line')
+      .attr('x1', xScale(src.n) + stepX / 2)
+      .attr('y1', yScale(src.z + 1) + stepY / 2)
+      .attr('x2', xScale(dst.n) + stepX / 2)
+      .attr('y2', yScale(dst.z + 1) + stepY / 2)
+      .attr('stroke', col)
+      .attr('stroke-width', 0.8)
+      .attr('stroke-opacity', 0.55);
+  }
 
   // Hover perf stats
   const hoverPerf = {
@@ -1123,15 +1150,24 @@ function render(rawData, periodicTableData) {
 
   let activeChainIds = new Set();
 
+  function cellStroke(d) {
+    if (colorMode === 'chains') return '#1a1a1a';
+    if (colorMode === 'decay' && d.decay1 === 'stable') return '#fff';
+    return 'rgba(0,0,0,0.45)';
+  }
+  function cellStrokeWidth(d) {
+    if (colorMode === 'chains') return 0.3;
+    if (colorMode === 'decay' && d.decay1 === 'stable') return 0.7;
+    return 0.3;
+  }
+
   function resetChainCellStyles(idSet) {
     if (!idSet || idSet.size === 0) return;
     cells
       .filter(d => idSet.has(d.id))
       .attr('opacity', 1)
-      .attr('stroke', d =>
-        colorMode === 'decay' && d.decay1 === 'stable' ? '#fff' : 'rgba(0,0,0,0.45)')
-      .attr('stroke-width', d =>
-        colorMode === 'decay' && d.decay1 === 'stable' ? 0.7 : 0.3);
+      .attr('stroke', d => cellStroke(d))
+      .attr('stroke-width', d => cellStrokeWidth(d));
   }
 
   function highlightChain(chain) {
@@ -1343,10 +1379,16 @@ function render(rawData, periodicTableData) {
   function updateColors() {
     cells
       .attr('fill', d => getColor(d))
-      .attr('stroke', d =>
-        colorMode === 'decay' && d.decay1 === 'stable' ? '#fff' : 'rgba(0,0,0,0.45)')
-      .attr('stroke-width', d =>
-        colorMode === 'decay' && d.decay1 === 'stable' ? 0.7 : 0.3);
+      .attr('stroke', d => cellStroke(d))
+      .attr('stroke-width', d => cellStrokeWidth(d));
+
+    // Toggle static chain overlay
+    staticChainG.style('display', colorMode === 'chains' ? null : 'none');
+
+    // Dim element row labels in chains mode
+    zoomG.selectAll('.element-row-label')
+      .attr('fill', colorMode === 'chains' ? '#333' : '#b8b8b8');
+
     buildLegend();
   }
 
@@ -1369,6 +1411,17 @@ function render(rawData, periodicTableData) {
         item.className = 'legend-item';
         const border = k === 'stable' ? 'border:1px solid #fff;' : '';
         item.innerHTML = `<div class="legend-swatch" style="background:${DECAY_COLORS[k] || '#555'};${border}"></div><span>${DECAY_LABELS[k] || k}</span>`;
+        el.appendChild(item);
+      });
+    } else if (colorMode === 'chains') {
+      // Same decay-mode swatches, but labelled as chain line colors
+      const seen = new Set(nodes.map(d => d.decay1 === 'stable' ? 'stable' : d.decay1));
+      const order = ['stable','B-','B+','A','SF','IT','P','N','?'];
+      order.forEach(k => {
+        if (!seen.has(k)) return;
+        const item = document.createElement('div');
+        item.className = 'legend-item';
+        item.innerHTML = `<div class="legend-swatch" style="background:${DECAY_COLORS[k] || '#555'}"></div><span>${DECAY_LABELS[k] || k}</span>`;
         el.appendChild(item);
       });
     } else if (colorMode === 'halflife') {
@@ -1394,6 +1447,236 @@ function render(rawData, periodicTableData) {
   }
 
   buildLegend();
+
+  // ── Download full-scene PNG ────────────────────────────────────────────────
+  const EXPORT_W = 8192;
+  const EXPORT_H = Math.round(EXPORT_W * (H / W));
+
+  document.getElementById('download-png').addEventListener('click', () => {
+    const btn = document.getElementById('download-png');
+    btn.textContent = 'Rendering…';
+    btn.disabled = true;
+
+    // Use requestAnimationFrame so the button text updates before the heavy work
+    requestAnimationFrame(() => {
+      try {
+        downloadFullScenePNG();
+      } finally {
+        btn.textContent = 'Download PNG';
+        btn.disabled = false;
+      }
+    });
+  });
+
+  /* ── Export legend (injected into clone only) ─────────────────────────── */
+  function buildExportLegend(parent, vW, vH) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const g = document.createElementNS(ns, 'g');
+
+    const pad = 18, swatchSize = 16, rowH = 24, fontSize = 14, titleFontSize = 16;
+    let items = [];
+
+    if (colorMode === 'decay' || colorMode === 'chains') {
+      const label = colorMode === 'chains' ? 'Decay Chain Lines' : 'Primary Decay Mode';
+      const order = ['stable','B-','B+','A','SF','IT','P','N','?'];
+      const seen = new Set(nodes.map(d => d.decay1 === 'stable' ? 'stable' : d.decay1));
+      items = order.filter(k => seen.has(k)).map(k => ({
+        color: DECAY_COLORS[k] || '#555',
+        label: DECAY_LABELS[k] || k,
+        border: k === 'stable' && colorMode === 'decay' ? '#fff' : null,
+      }));
+      items._title = label;
+    } else if (colorMode === 'halflife') {
+      items._title = 'Half-life';
+      items._gradient = { interp: 'Plasma', labelL: 'Short (< 1 ps)', labelR: 'Long (> 10¹³ y)' };
+    } else if (colorMode === 'abundance') {
+      items._title = 'Natural Abundance';
+      items._gradient = { interp: 'YlOrRd', labelL: 'Low', labelR: 'High' };
+    }
+
+    if (!items._title) return;
+
+    // Measure box dimensions
+    const isGradient = !!items._gradient;
+    const contentH = isGradient ? rowH * 2 : items.length * rowH;
+    const boxH = pad * 2 + titleFontSize + 8 + contentH;
+    const boxW = isGradient ? 260 : 200;
+    const ox = vW - boxW - 20;
+    const oy = vH - boxH - 20;
+    g.setAttribute('transform', `translate(${ox},${oy})`);
+
+    // Background
+    const bg = document.createElementNS(ns, 'rect');
+    bg.setAttribute('width', boxW);
+    bg.setAttribute('height', boxH);
+    bg.setAttribute('rx', 6);
+    bg.setAttribute('fill', 'rgba(13,13,13,0.88)');
+    bg.setAttribute('stroke', '#333');
+    bg.setAttribute('stroke-width', '1');
+    g.appendChild(bg);
+
+    // Title
+    const title = document.createElementNS(ns, 'text');
+    title.setAttribute('x', pad);
+    title.setAttribute('y', pad + titleFontSize);
+    title.setAttribute('fill', '#e0e0e0');
+    title.setAttribute('font-family', "'Segoe UI', system-ui, sans-serif");
+    title.setAttribute('font-size', titleFontSize);
+    title.setAttribute('font-weight', '600');
+    title.textContent = items._title;
+    g.appendChild(title);
+
+    const startY = pad + titleFontSize + 12;
+
+    if (isGradient) {
+      // Gradient bar
+      const gradW = boxW - pad * 2;
+      const gradH = 14;
+      const gradId = 'export-legend-grad-' + colorMode;
+      const defs = document.createElementNS(ns, 'defs');
+      const lg = document.createElementNS(ns, 'linearGradient');
+      lg.setAttribute('id', gradId);
+      const stops = [0, 0.25, 0.5, 0.75, 1];
+      const interpFn = colorMode === 'halflife' ? d3.interpolatePlasma : d3.interpolateYlOrRd;
+      stops.forEach(t => {
+        const s = document.createElementNS(ns, 'stop');
+        s.setAttribute('offset', `${t * 100}%`);
+        s.setAttribute('stop-color', interpFn(t));
+        lg.appendChild(s);
+      });
+      defs.appendChild(lg);
+      g.appendChild(defs);
+
+      const bar = document.createElementNS(ns, 'rect');
+      bar.setAttribute('x', pad);
+      bar.setAttribute('y', startY);
+      bar.setAttribute('width', gradW);
+      bar.setAttribute('height', gradH);
+      bar.setAttribute('rx', 3);
+      bar.setAttribute('fill', `url(#${gradId})`);
+      g.appendChild(bar);
+
+      const lbl = items._gradient;
+      [{ text: lbl.labelL, x: pad, anchor: 'start' },
+       { text: lbl.labelR, x: pad + gradW, anchor: 'end' }].forEach(({ text, x, anchor }) => {
+        const t = document.createElementNS(ns, 'text');
+        t.setAttribute('x', x);
+        t.setAttribute('y', startY + gradH + fontSize + 2);
+        t.setAttribute('fill', '#aaa');
+        t.setAttribute('font-family', "'Segoe UI', system-ui, sans-serif");
+        t.setAttribute('font-size', fontSize - 2);
+        t.setAttribute('text-anchor', anchor);
+        t.textContent = text;
+        g.appendChild(t);
+      });
+    } else {
+      // Swatch rows
+      items.forEach((item, i) => {
+        const y = startY + i * rowH;
+        const sw = document.createElementNS(ns, 'rect');
+        sw.setAttribute('x', pad);
+        sw.setAttribute('y', y);
+        sw.setAttribute('width', swatchSize);
+        sw.setAttribute('height', swatchSize);
+        sw.setAttribute('rx', 2);
+        sw.setAttribute('fill', item.color);
+        if (item.border) {
+          sw.setAttribute('stroke', item.border);
+          sw.setAttribute('stroke-width', '1.5');
+        }
+        g.appendChild(sw);
+
+        const t = document.createElementNS(ns, 'text');
+        t.setAttribute('x', pad + swatchSize + 8);
+        t.setAttribute('y', y + swatchSize - 3);
+        t.setAttribute('fill', '#bbb');
+        t.setAttribute('font-family', "'Segoe UI', system-ui, sans-serif");
+        t.setAttribute('font-size', fontSize);
+        t.textContent = item.label;
+        g.appendChild(t);
+      });
+    }
+
+    parent.appendChild(g);
+  }
+
+  function downloadFullScenePNG() {
+    const svgEl = document.getElementById('chart');
+
+    // Clone the SVG so we don't disturb the live chart
+    const clone = svgEl.cloneNode(true);
+
+    // Reset the zoom transform on the clone's zoomG (first <g> inside root <g>)
+    // The structure is: svg > g[root] > g[zoomG]
+    const rootG = clone.querySelector('g');
+    if (rootG) {
+      const zG = rootG.querySelector('g');
+      if (zG) zG.removeAttribute('transform');
+    }
+
+    // Set explicit dimensions and viewBox for full-scene render
+    clone.setAttribute('width', EXPORT_W);
+    clone.setAttribute('height', EXPORT_H);
+    clone.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    clone.removeAttribute('style');
+    clone.style.width = EXPORT_W + 'px';
+    clone.style.height = EXPORT_H + 'px';
+
+    // Inject all styles into the clone so it renders standalone
+    const styleEl = document.querySelector('style');
+    if (styleEl) {
+      const defsEl = clone.querySelector('defs') || clone.insertBefore(
+        document.createElementNS('http://www.w3.org/2000/svg', 'defs'),
+        clone.firstChild
+      );
+      const svgStyle = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+      svgStyle.textContent = styleEl.textContent;
+      defsEl.appendChild(svgStyle);
+    }
+
+    // Add a background rect (SVG bg is transparent by default)
+    const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bgRect.setAttribute('width', '100%');
+    bgRect.setAttribute('height', '100%');
+    bgRect.setAttribute('fill', '#0d0d0d');
+    clone.insertBefore(bgRect, clone.querySelector('defs')?.nextSibling || clone.firstChild);
+
+    // Inject legend into clone
+    buildExportLegend(clone, W, H);
+
+    // Serialize to SVG string
+    const serializer = new XMLSerializer();
+    const svgString = serializer.serializeToString(clone);
+    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+
+    // Rasterize via canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = EXPORT_W;
+    canvas.height = EXPORT_H;
+    const ctx = canvas.getContext('2d');
+
+    const img = new Image();
+    img.onload = () => {
+      ctx.fillStyle = '#0d0d0d';
+      ctx.fillRect(0, 0, EXPORT_W, EXPORT_H);
+      ctx.drawImage(img, 0, 0, EXPORT_W, EXPORT_H);
+      URL.revokeObjectURL(url);
+
+      canvas.toBlob(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `nuclide-chart-${colorMode}-${EXPORT_W}x${EXPORT_H}.png`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      }, 'image/png');
+    };
+    img.onerror = (e) => {
+      console.error('[nuclide/export] Failed to rasterize SVG', e);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
 
   const statusBar = document.getElementById('status-bar');
   if (statusBar) {
