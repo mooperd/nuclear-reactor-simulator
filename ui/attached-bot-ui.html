@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DevTools MCP Tool Test Suite</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --panel-2: #1f2937;
+      --text: #e6edf3;
+      --muted: #9fb0c7;
+      --accent: #2f81f7;
+      --good: #3fb950;
+      --warn: #d29922;
+      --bad: #f85149;
+      --border: #30363d;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }
+
+    header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      background: #0b0f14;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: .02em;
+    }
+
+    .status {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .status.ok { color: var(--good); border-color: #1f5f34; }
+    .status.err { color: var(--bad); border-color: #6d2f2f; }
+
+    .controls {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: #0f141b;
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr auto auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    label {
+      display: grid;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    input, button, textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: #111827;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px;
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+      background: #1d2634;
+    }
+
+    button:hover { background: #263347; }
+    button.primary { background: #1f4f93; border-color: #2f66b5; }
+    button.primary:hover { background: #2661b2; }
+
+    main {
+      min-height: 0;
+      padding: 12px 16px;
+      display: grid;
+      grid-template-columns: 1.4fr .9fr;
+      gap: 12px;
+    }
+
+    .panel {
+      min-height: 0;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .panel h2 {
+      margin: 0;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      letter-spacing: .06em;
+      color: var(--muted);
+      text-transform: uppercase;
+      background: #111722;
+    }
+
+    .table-wrap {
+      overflow: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      border-bottom: 1px solid #263142;
+      padding: 8px;
+      vertical-align: top;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: #131a27;
+      z-index: 1;
+      text-align: left;
+      color: #c2d1e7;
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .pass { color: var(--good); border-color: #255c32; }
+    .fail { color: var(--bad); border-color: #6d2f2f; }
+    .skip { color: var(--warn); border-color: #665118; }
+    .run { color: var(--accent); border-color: #2a4d77; }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #0b111b;
+      border-top: 1px solid var(--border);
+      padding: 10px;
+      margin: 0;
+      overflow: auto;
+      min-height: 0;
+    }
+
+    .summary {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      background: #111722;
+    }
+
+    .summary .pill {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 1100px) {
+      .controls { grid-template-columns: 1fr 1fr; }
+      main { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🧪 DevTools MCP Tool Automated Test Suite</h1>
+    <span id="conn" class="status">Checking connection…</span>
+  </header>
+
+  <section class="controls">
+    <label>Test target URL
+      <input id="targetUrl" value="http://127.0.0.1:8000/nuclide-chart.html" />
+    </label>
+    <label>Expected text
+      <input id="expectedText" value="Nuclide" />
+    </label>
+    <label>Wait timeout (ms)
+      <input id="waitTimeout" type="number" value="12000" />
+    </label>
+    <button id="runBtn" class="primary">Run Full Suite</button>
+    <button id="exportBtn">Export JSON</button>
+  </section>
+
+  <main>
+    <section class="panel">
+      <h2>Test Results</h2>
+      <div class="summary" id="summary"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 16%">Category</th>
+              <th style="width: 20%">Tool</th>
+              <th style="width: 10%">Status</th>
+              <th>Details</th>
+              <th style="width: 14%">Duration</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Execution Log</h2>
+      <pre id="log" class="mono">Idle. Click "Run Full Suite".</pre>
+    </section>
+  </main>
+
+  <script>
+    const connEl = document.getElementById('conn');
+    const resultsBody = document.getElementById('resultsBody');
+    const summaryEl = document.getElementById('summary');
+    const logEl = document.getElementById('log');
+    const runBtn = document.getElementById('runBtn');
+    const exportBtn = document.getElementById('exportBtn');
+
+    const state = {
+      selectedIndex: null,
+      report: null,
+    };
+
+    const TOOL_CATEGORIES = {
+      'Input automation': ['click', 'drag', 'fill', 'fill_form', 'handle_dialog', 'hover', 'press_key', 'type_text', 'upload_file'],
+      'Navigation automation': ['close_page', 'list_pages', 'navigate_page', 'new_page', 'select_page', 'wait_for'],
+      'Emulation': ['emulate', 'resize_page'],
+      'Performance': ['performance_analyze_insight', 'performance_start_trace', 'performance_stop_trace'],
+      'Network': ['get_network_request', 'list_network_requests'],
+      'Debugging': ['evaluate_script', 'get_console_message', 'lighthouse_audit', 'list_console_messages', 'take_screenshot', 'take_snapshot'],
+      'Extensions': ['install_extension', 'list_extensions', 'reload_extension', 'trigger_extension_action', 'uninstall_extension'],
+      'Memory': ['take_memory_snapshot'],
+    };
+
+    function now() {
+      return performance.now();
+    }
+
+    function setConn(connected) {
+      connEl.textContent = connected ? 'Connected' : 'Disconnected';
+      connEl.className = `status ${connected ? 'ok' : 'err'}`;
+    }
+
+    function pushLog(line) {
+      const t = new Date().toISOString().slice(11, 19);
+      logEl.textContent += `\n[${t}] ${line}`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    async function api(path, options = {}) {
+      const resp = await fetch(path, {
+        method: options.method || 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data.ok === false) {
+        throw new Error(data.error || `HTTP ${resp.status}`);
+      }
+      return data;
+    }
+
+    async function refreshConnection() {
+      try {
+        const out = await api('/api/status');
+        setConn(Boolean(out.connected));
+        return out;
+      } catch {
+        setConn(false);
+        return { connected: false };
+      }
+    }
+
+    function formatMs(ms) {
+      return `${Math.round(ms)}ms`;
+    }
+
+    function renderResults(rows) {
+      resultsBody.innerHTML = '';
+      for (const row of rows) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.category}</td>
+          <td><span class="mono" style="background:transparent;border:0;padding:0;white-space:normal">${row.tool}</span></td>
+          <td><span class="badge ${row.status === 'pass' ? 'pass' : row.status === 'fail' ? 'fail' : row.status === 'run' ? 'run' : 'skip'}">${row.status.toUpperCase()}</span></td>
+          <td>${row.details || ''}</td>
+          <td>${row.durationMs != null ? formatMs(row.durationMs) : ''}</td>
+        `;
+        resultsBody.appendChild(tr);
+      }
+
+      const total = rows.length;
+      const pass = rows.filter(r => r.status === 'pass').length;
+      const fail = rows.filter(r => r.status === 'fail').length;
+      const skip = rows.filter(r => r.status === 'skip').length;
+      summaryEl.innerHTML = `
+        <span class="pill">Total: ${total}</span>
+        <span class="pill" style="color:var(--good)">Pass: ${pass}</span>
+        <span class="pill" style="color:var(--bad)">Fail: ${fail}</span>
+        <span class="pill" style="color:var(--warn)">Unsupported/Skipped: ${skip}</span>
+      `;
+    }
+
+    async function prepareTarget(targetUrl) {
+      const pages = await api('/api/pages');
+      if (pages.pages.length === 0) {
+        await api('/api/new-page', { method: 'POST', body: { url: targetUrl } });
+      } else {
+        await api('/api/new-page', { method: 'POST', body: { url: targetUrl } });
+      }
+      const after = await api('/api/pages');
+      state.selectedIndex = after.selectedIndex;
+      await api('/api/clear-logs', { method: 'POST' });
+    }
+
+    function makeRowsSkeleton() {
+      const rows = [];
+      for (const [category, tools] of Object.entries(TOOL_CATEGORIES)) {
+        for (const tool of tools) {
+          rows.push({ category, tool, status: 'run', details: 'Pending', durationMs: null });
+        }
+      }
+      return rows;
+    }
+
+    function setRow(rows, tool, patch) {
+      const r = rows.find(x => x.tool === tool);
+      if (!r) return;
+      Object.assign(r, patch);
+      renderResults(rows);
+    }
+
+    async function runCase(rows, category, tool, handler) {
+      const start = now();
+      try {
+        const details = await handler();
+        setRow(rows, tool, { category, status: 'pass', details: String(details || 'OK'), durationMs: now() - start });
+        pushLog(`PASS ${tool}: ${details || 'OK'}`);
+      } catch (err) {
+        setRow(rows, tool, { category, status: 'fail', details: err.message || String(err), durationMs: now() - start });
+        pushLog(`FAIL ${tool}: ${err.message || err}`);
+      }
+    }
+
+    function markSkip(rows, category, tool, reason) {
+      setRow(rows, tool, { category, status: 'skip', details: reason, durationMs: 0 });
+      pushLog(`SKIP ${tool}: ${reason}`);
+    }
+
+    async function runSuite() {
+      runBtn.disabled = true;
+      exportBtn.disabled = true;
+      logEl.textContent = 'Starting suite...';
+
+      const targetUrl = document.getElementById('targetUrl').value.trim();
+      const expectedText = document.getElementById('expectedText').value.trim() || 'Nuclide';
+      const waitTimeout = Number(document.getElementById('waitTimeout').value || 12000);
+
+      const rows = makeRowsSkeleton();
+      renderResults(rows);
+
+      try {
+        pushLog('Checking browser connection...');
+        const status = await refreshConnection();
+        if (!status.connected) throw new Error('Browser is not connected to remote debugging endpoint.');
+
+        await prepareTarget(targetUrl);
+
+        await runCase(rows, 'Navigation automation', 'list_pages', async () => {
+          const out = await api('/api/pages');
+          if (!Array.isArray(out.pages) || out.pages.length < 1) throw new Error('No pages returned.');
+          return `pages=${out.pages.length}`;
+        });
+
+        await runCase(rows, 'Navigation automation', 'new_page', async () => {
+          const out = await api('/api/new-page', { method: 'POST', body: { url: targetUrl } });
+          if (!out.url) throw new Error('Missing returned URL.');
+          return out.url;
+        });
+
+        await runCase(rows, 'Navigation automation', 'select_page', async () => {
+          const out = await api('/api/pages');
+          const lastIdx = out.pages[out.pages.length - 1]?.index;
+          if (!Number.isInteger(lastIdx)) throw new Error('No selectable page index.');
+          await api('/api/select-page', { method: 'POST', body: { index: lastIdx } });
+          state.selectedIndex = lastIdx;
+          return `index=${lastIdx}`;
+        });
+
+        await runCase(rows, 'Navigation automation', 'navigate_page', async () => {
+          const nav = await api('/api/navigate', { method: 'POST', body: { url: targetUrl } });
+          await api('/api/history', { method: 'POST', body: { direction: 'back' } });
+          await api('/api/history', { method: 'POST', body: { direction: 'forward' } });
+          await api('/api/reload', { method: 'POST' });
+          return nav.url || 'navigated';
+        });
+
+        await runCase(rows, 'Navigation automation', 'wait_for', async () => {
+          const out = await api('/api/wait-for', {
+            method: 'POST',
+            body: { text: expectedText, timeout: waitTimeout },
+          });
+          if (!out.found) throw new Error('Text not found.');
+          return `text="${expectedText}"`;
+        });
+
+        await runCase(rows, 'Debugging', 'evaluate_script', async () => {
+          const code = `
+            return {
+              title: document.title,
+              href: location.href,
+              bodyChars: document.body?.innerText?.length || 0
+            };
+          `;
+          const out = await api('/api/evaluate', { method: 'POST', body: { code } });
+          if (!out.result || typeof out.result !== 'object') throw new Error('No JSON result.');
+          return `title=${out.result.title || '(none)'}`;
+        });
+
+        await runCase(rows, 'Debugging', 'take_screenshot', async () => {
+          const out = await api('/api/screenshot', { method: 'POST', body: { fullPage: true } });
+          if (!out.relativePath) throw new Error('Screenshot file path missing.');
+          return out.relativePath;
+        });
+
+        await runCase(rows, 'Debugging', 'list_console_messages', async () => {
+          const out = await api('/api/console');
+          if (!Array.isArray(out.messages)) throw new Error('Invalid console response.');
+          return `messages=${out.messages.length}`;
+        });
+
+        await runCase(rows, 'Debugging', 'get_console_message', async () => {
+          const out = await api('/api/console');
+          if (!Array.isArray(out.messages)) throw new Error('Invalid console response.');
+          if (out.messages.length === 0) return 'No messages available (valid).';
+          const first = out.messages[0];
+          if (!('text' in first)) throw new Error('First message has no text field.');
+          return `sample="${String(first.text).slice(0, 50)}"`;
+        });
+
+        await runCase(rows, 'Network', 'list_network_requests', async () => {
+          const out = await api('/api/network');
+          if (!Array.isArray(out.requests)) throw new Error('Invalid network response.');
+          return `requests=${out.requests.length}`;
+        });
+
+        await runCase(rows, 'Network', 'get_network_request', async () => {
+          const out = await api('/api/network');
+          if (!Array.isArray(out.requests)) throw new Error('Invalid network response.');
+          if (out.requests.length === 0) return 'No requests available (valid).';
+          const first = out.requests[0];
+          if (!first.url) throw new Error('Sample request missing URL.');
+          return first.url;
+        });
+
+        await runCase(rows, 'Navigation automation', 'close_page', async () => {
+          const out = await api('/api/pages');
+          const closeIdx = out.pages.length > 1 ? out.pages.length - 1 : null;
+          if (closeIdx == null) return 'Only one page open; close blocked by design.';
+          await api('/api/close-page', { method: 'POST', body: { index: closeIdx } });
+          return `closed index=${closeIdx}`;
+        });
+
+        await runCase(rows, 'Debugging', 'take_snapshot', async () => {
+          const out = await api('/api/evaluate', {
+            method: 'POST',
+            body: {
+              code: `
+                return {
+                  roleCount: document.querySelectorAll('*').length,
+                  title: document.title,
+                  bodyPreview: (document.body?.innerText || '').slice(0, 80)
+                };
+              `,
+            },
+          });
+          if (!out.result || !('roleCount' in out.result)) throw new Error('Snapshot proxy failed.');
+          return `elements=${out.result.roleCount}`;
+        });
+
+        const unsupported = [
+          ['Input automation', 'click'],
+          ['Input automation', 'drag'],
+          ['Input automation', 'fill'],
+          ['Input automation', 'fill_form'],
+          ['Input automation', 'handle_dialog'],
+          ['Input automation', 'hover'],
+          ['Input automation', 'press_key'],
+          ['Input automation', 'type_text'],
+          ['Input automation', 'upload_file'],
+          ['Emulation', 'emulate'],
+          ['Emulation', 'resize_page'],
+          ['Performance', 'performance_start_trace'],
+          ['Performance', 'performance_stop_trace'],
+          ['Performance', 'performance_analyze_insight'],
+          ['Debugging', 'lighthouse_audit'],
+          ['Extensions', 'install_extension'],
+          ['Extensions', 'list_extensions'],
+          ['Extensions', 'reload_extension'],
+          ['Extensions', 'trigger_extension_action'],
+          ['Extensions', 'uninstall_extension'],
+          ['Memory', 'take_memory_snapshot'],
+        ];
+
+        for (const [category, tool] of unsupported) {
+          markSkip(rows, category, tool, 'Not available in current bridge API.');
+        }
+
+        state.report = {
+          generatedAt: new Date().toISOString(),
+          targetUrl,
+          expectedText,
+          waitTimeout,
+          results: rows,
+        };
+
+        pushLog('Suite complete.');
+      } catch (err) {
+        const reason = err?.message || String(err);
+        for (const row of rows) {
+          if (row.status === 'run') {
+            row.status = 'skip';
+            row.details = `Not executed: ${reason}`;
+            row.durationMs = 0;
+          }
+        }
+        pushLog(`Suite aborted: ${reason}`);
+      } finally {
+        renderResults(rows);
+        await refreshConnection();
+        runBtn.disabled = false;
+        exportBtn.disabled = false;
+      }
+    }
+
+    function exportReport() {
+      if (!state.report) {
+        pushLog('No report yet. Run suite first.');
+        return;
+      }
+      const blob = new Blob([JSON.stringify(state.report, null, 2)], { type: 'application/json' });
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = `devtools-mcp-test-report-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(href);
+      pushLog('Exported JSON report.');
+    }
+
+    runBtn.onclick = runSuite;
+    exportBtn.onclick = exportReport;
+
+    (async function init() {
+      await refreshConnection();
+      renderResults(makeRowsSkeleton());
+      pushLog('Ready.');
+    })();
+  </script>
+</body>
+</html>

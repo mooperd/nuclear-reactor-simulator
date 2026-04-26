@@ -370,13 +370,22 @@
       pointer-events: none;
     }
 
-    .element-row-label {
+    .element-row-tag,
+    .element-row-tag * {
       pointer-events: none;
       user-select: none;
+    }
+
+    .element-row-label-box {
+      fill: none;
+      stroke: none;
+    }
+
+    .element-row-label {
       text-anchor: end;
-      fill: #9a9a9a;
-      font-size: 10px;
-      font-weight: 500;
+      fill: #b8b8b8;
+      font-size: 4px;
+      font-weight: 200;
       letter-spacing: 0.01em;
     }
   </style>
@@ -627,6 +636,23 @@ function render(rawData, periodicTableData) {
     if (meta.number !== null) elementByZ.set(meta.number, meta);
   });
 
+  // Synthetic entry for z=0 (neutron) so the element row label pipeline handles it naturally.
+  if (!elementByZ.has(0)) {
+    const neutronMeta = {
+      symbol: 'n',
+      name: 'Neutron',
+      number: 0,
+      category: 'baryon',
+      phase: '',
+      group: null,
+      period: null,
+      atomic_mass: 1.00866491595,
+      block: '',
+    };
+    elementByZ.set(0, neutronMeta);
+    elementBySymbol.set('n', neutronMeta);
+  }
+
   // ── Parse ──────────────────────────────────────────────────────────────────
   const data = rawData.map(d => ({
     z:          +d.z,
@@ -677,17 +703,16 @@ function render(rawData, periodicTableData) {
   const elementLookupMismatch = data.filter(d => d.element_lookup_ok && !d.element_z_matches).length;
   const parseDoneMs = performance.now();
 
-  // Assign stable numeric ids and keys
-  data.forEach((d, id) => {
-    d.id = id;
-    d.key = `${d.z},${d.n}`;
-  });
+  // Assign stable numeric ids and keys.
+  // IMPORTANT: ids are assigned on `nodes` (not `data`) so that .id always
+  // matches the array index in decayGraph.nodes.  Earlier code filtered data
+  // into nodes which broke this invariant and caused off-by-N chain lookups.
+  data.forEach(d => { d.key = `${d.z},${d.n}`; });
 
   // ── Graph model (D3-style): { nodes, links } ─────────────────────────────
   // Nodes are nuclides, links are decay transitions (up to 3 modes per nuclide)
-  // Only proton-number-backed chemical-element rows (Z >= 1) are shown.
-  // This suppresses free-particle rows (e.g., Z=0 neutron entries) from chart cells/labels.
-  const nodes = data.filter(d => d.z >= 1);
+  const nodes = data;
+  nodes.forEach((d, id) => { d.id = id; });
   const nodeByKey = new Map(nodes.map(n => [n.key, n]));
   const links = [];
 
@@ -896,15 +921,37 @@ function render(rawData, periodicTableData) {
       );
     }
 
-    return [{ z, name: Array.from(names)[0] }];
+    const minN = d3.min(elementRowNodes, n => n.n);
+    const name = Array.from(names)[0];
+    // Approximate text width for SVG tag box; avoids layout-measure pass.
+    const tagWidth = Math.max(46, Math.min(128, Math.round(name.length * 6.1 + 12)));
+
+    return [{ z, name, minN, tagWidth }];
   });
 
-  zoomG.selectAll('.element-row-label')
+  const elementRowTags = zoomG.selectAll('.element-row-tag')
     .data(elementRows)
-    .enter().append('text')
+    .enter().append('g')
+      .attr('class', 'element-row-tag')
+      .attr('transform', d => {
+        const rowLeftX = xScale(d.minN);
+        const rowCenterY = yScale(d.z + 1) + stepY / 2;
+        return `translate(${rowLeftX},${rowCenterY})`;
+      });
+
+  elementRowTags.append('rect')
+      .attr('class', 'element-row-label-box')
+      .attr('x', d => -d.tagWidth - 3)
+      .attr('y', -stepY / 2 + 0.25)
+      .attr('width', d => d.tagWidth)
+      .attr('height', Math.max(2, stepY - 0.5))
+      .attr('rx', 1);
+
+  elementRowTags.append('text')
       .attr('class', 'element-row-label')
       .attr('x', -8)
-      .attr('y', d => yScale(d.z + 1) + stepY / 2 + 3)
+      .attr('y', 0)
+      .attr('dominant-baseline', 'middle')
       .text(d => d.name);
 
   // Hover label is always shown for the active cell even when zoomed out

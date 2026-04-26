@@ -126,6 +126,34 @@ Output files:
 - `debug/console-errors.json`
 - `debug/console-errors.txt`
 
+## Human Operator UI for `chrome-devtools-attached`
+
+If you want a manual control panel that feels like “being the bot”, this repo now includes a local UI backed by Puppeteer connected to a Chrome debug port.
+
+### Start Chrome in remote-debug mode
+
+1. Fully quit Chrome.
+2. Start Chrome with remote debugging:
+
+  - `/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-profile-stable`
+
+### Start the operator UI
+
+- `npm run ui:attached`
+
+Then open:
+
+- `http://127.0.0.1:8787/`
+
+The UI provides:
+
+- page list/select/new page
+- navigate/back/forward/reload
+- wait-for-text
+- run page JavaScript (`evaluate_script` style)
+- capture screenshot to `debug/screenshots/`
+- view live console and network request buffers
+
 ## Typical workflow
 
 1. Start `serve-nuclide-chart`
