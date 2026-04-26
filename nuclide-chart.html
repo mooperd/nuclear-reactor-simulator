@@ -407,6 +407,9 @@
     <div class="control-group">
       <button class="reset-btn" id="reset-zoom">Reset Zoom</button>
       <button class="reset-btn" id="download-png">Download PNG</button>
+      <label style="display:flex;align-items:center;gap:4px;font-size:0.75rem;color:#aaa;cursor:pointer;user-select:none">
+        <input type="checkbox" id="png-legend" checked style="accent-color:#666;cursor:pointer"> Legend
+      </label>
     </div>
     <div id="legend" class="legend"></div>
   </div>
@@ -1641,8 +1644,10 @@ function render(rawData, periodicTableData) {
     bgRect.setAttribute('fill', '#0d0d0d');
     clone.insertBefore(bgRect, clone.querySelector('defs')?.nextSibling || clone.firstChild);
 
-    // Inject legend into clone
-    buildExportLegend(clone, W, H);
+    // Inject legend into clone (if enabled)
+    if (document.getElementById('png-legend').checked) {
+      buildExportLegend(clone, W, H);
+    }
 
     // Serialize to SVG string
     const serializer = new XMLSerializer();
