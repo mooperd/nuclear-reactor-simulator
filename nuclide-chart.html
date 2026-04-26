@@ -219,6 +219,20 @@
       text-align: right;
     }
 
+    /* Lock indicator */
+    .lock-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.68rem;
+      color: #555;
+      cursor: pointer;
+      user-select: none;
+      padding: 2px 0;
+    }
+    .lock-indicator:hover { color: #888; }
+    .lock-indicator.locked { color: #f5c542; }
+
     /* Empty state */
     #panel-empty {
       flex: 1;
@@ -433,7 +447,10 @@
     </div>
     <div id="panel-content" style="display:none;flex-direction:column;height:100%">
       <div class="panel-header">
-        <div class="nuclide-name" id="p-name"></div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+          <div class="nuclide-name" id="p-name"></div>
+          <div class="lock-indicator" id="lock-indicator" title="Click a cell to lock, click again to unlock">🔓 <span>locked</span></div>
+        </div>
         <div class="nuclide-sub" id="p-sub"></div>
       </div>
       <div class="panel-body">
@@ -531,8 +548,12 @@ const MAGIC = [2, 8, 20, 28, 50, 82, 126];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function parseDecay(d) {
-  if (!d || d.trim() === '') return '?';
+function parseDecay(d, halfLife) {
+  if (!d || d.trim() === '') {
+    // Stable nuclides have an empty decay_1 field but half_life == "STABLE"
+    if (halfLife && halfLife.trim().toUpperCase() === 'STABLE') return 'stable';
+    return '?';
+  }
   const s = d.trim().toUpperCase();
   if (s === 'STABLE' || s === 'S') return 'stable';
   if (s.startsWith('A'))  return 'A';
@@ -676,7 +697,7 @@ function render(rawData, periodicTableData) {
     half_life_sec: d.half_life_sec,
     unit_hl:    d.unit_hl,
     abundance:  d.abundance,
-    decay1:     parseDecay(d.decay_1),
+    decay1:     parseDecay(d.decay_1, d.half_life),
     decay1_pct: d['decay_1_%'] || '',
     decay2:     parseDecay(d.decay_2),
     decay3:     parseDecay(d.decay_3),
@@ -1329,10 +1350,7 @@ function render(rawData, periodicTableData) {
         arr.innerHTML = `<span style="color:#2a2a2a;padding-left:4px">↓</span>`;
         strip.appendChild(arr);
       } else if (c.decay1 === 'stable') {
-        const fin = document.createElement('div');
-        fin.className = 'chain-step';
-        fin.innerHTML = `<span style="color:#3dbf7f;padding-left:4px;font-size:0.75rem">✓ Stable end-point</span>`;
-        strip.appendChild(fin);
+        // No footer needed — the "Stable" badge is self-explanatory
       } else {
         const fin = document.createElement('div');
         fin.className = 'chain-step';
@@ -1352,6 +1370,58 @@ function render(rawData, periodicTableData) {
 
   // ── Cell interaction ───────────────────────────────────────────────────────
   let lastHoveredKey = null;
+  let lockedNode = null;    // when non-null, panel is pinned to this nuclide
+
+  const lockIndicator = document.getElementById('lock-indicator');
+  lockIndicator.style.display = 'none';
+
+  function setLocked(node) {
+    lockedNode = node;
+    if (node) {
+      lockIndicator.style.display = '';
+      lockIndicator.classList.add('locked');
+      lockIndicator.querySelector('span').textContent = 'locked — click cell to unlock';
+    } else {
+      lockIndicator.style.display = 'none';
+      lockIndicator.classList.remove('locked');
+    }
+  }
+
+  // Click lock indicator to unlock
+  lockIndicator.addEventListener('click', () => {
+    setLocked(null);
+  });
+
+  function showNuclide(d, reason) {
+    const hoverStartMs = performance.now();
+
+    hoverCellLabel
+      .attr('x', xScale(d.n) + stepX / 2)
+      .attr('y', yScale(d.z + 1) + stepY * 0.62)
+      .text(`${d.z + d.n}${d.symbol}`)
+      .style('display', null);
+
+    const tChain0 = performance.now();
+    const chain = buildDecayChain(d);
+    const tChain1 = performance.now();
+
+    const tHighlight0 = performance.now();
+    highlightChain(chain);
+    const tHighlight1 = performance.now();
+
+    const tPanel0 = performance.now();
+    updatePanel(d, chain);
+    const tPanel1 = performance.now();
+
+    const sample = {
+      chainMs: tChain1 - tChain0,
+      highlightMs: tHighlight1 - tHighlight0,
+      panelMs: tPanel1 - tPanel0,
+      totalMs: tPanel1 - hoverStartMs,
+    };
+    logHoverPerf(sample, `${d.z + d.n}${d.symbol}`);
+    logChainDisplay('show', d, chain, sample, { reason });
+  }
 
   cells
     .on('mouseenter', function(event, d) {
@@ -1360,42 +1430,35 @@ function render(rawData, periodicTableData) {
         clearTimer = null;
       }
 
-      const hoverStartMs = performance.now();
+      // If locked, don't update panel on hover
+      if (lockedNode) return;
+
       const key = `${d.z},${d.n}`;
       if (key === lastHoveredKey) return;
       lastHoveredKey = key;
 
-      hoverCellLabel
-        .attr('x', xScale(d.n) + stepX / 2)
-        .attr('y', yScale(d.z + 1) + stepY * 0.62)
-        .text(`${d.z + d.n}${d.symbol}`)
-        .style('display', null);
+      showNuclide(d, 'mouseenter');
+    })
+    .on('click', function(event, d) {
+      event.stopPropagation();
+      const key = `${d.z},${d.n}`;
 
-      const tChain0 = performance.now();
-      const chain = buildDecayChain(d);
-      const tChain1 = performance.now();
+      if (lockedNode && lockedNode.key === key) {
+        // Clicking the locked cell unlocks
+        setLocked(null);
+        return;
+      }
 
-      const tHighlight0 = performance.now();
-      highlightChain(chain);
-      const tHighlight1 = performance.now();
-
-      const tPanel0 = performance.now();
-      updatePanel(d, chain);
-      const tPanel1 = performance.now();
-
-      const sample = {
-        chainMs: tChain1 - tChain0,
-        highlightMs: tHighlight1 - tHighlight0,
-        panelMs: tPanel1 - tPanel0,
-        totalMs: tPanel1 - hoverStartMs,
-      };
-      logHoverPerf(sample, `${d.z + d.n}${d.symbol}`);
-      logChainDisplay('show', d, chain, sample, { reason: 'mouseenter' });
+      // Lock to this cell
+      setLocked(d);
+      lastHoveredKey = key;
+      showNuclide(d, 'click-lock');
     });
 
   // Clear only when exiting the whole chart viewport.
   const chartAreaEl = document.getElementById('chart-area');
   chartAreaEl.addEventListener('mouseleave', () => {
+    if (lockedNode) return;  // don't clear when locked
     if (clearTimer) clearTimeout(clearTimer);
     clearTimer = setTimeout(() => {
       lastHoveredKey = null;
